@@ -62,6 +62,7 @@ class BaseGeneratorLower(object):
             lower.func_ir, self.fndesc, self.gentype, self.context.mangler)
         # Helps packing non-omitted arguments into a structure
         self.arg_packer = self.context.get_data_packer(self.fndesc.argtypes)
+        self.state_packer = self.context.get_data_packer(self.fndesc.restype.state_types)
 
         self.resume_blocks = {}
 
@@ -101,6 +102,7 @@ class BaseGeneratorLower(object):
         resume_index = self.context.get_constant(types.int32, 0)
         # Structure index #1: the function arguments
         argsty = retty.elements[1]
+        # Structure index #2: the state variables
         statesty = retty.elements[2]
 
         lower.debug_print("# low_init_func incref")
@@ -227,6 +229,10 @@ class GeneratorLower(BaseGeneratorLower):
             # self.debug_print(builder, "# generator: clear args")
             args_ptr = self.get_args_ptr(builder, genptr)
             for ty, val in self.arg_packer.load(builder, args_ptr):
+                self.context.nrt.decref(builder, ty, val)
+
+            state_ptr = self.get_state_ptr(builder, genptr)
+            for ty, val in self.state_packer.load(builder, state_ptr):
                 self.context.nrt.decref(builder, ty, val)
 
         self.debug_print(builder, "# generator: finalize end")
