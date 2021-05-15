@@ -327,9 +327,9 @@ class LowerYield(object):
                                               0, state_index)
             ty = self.gentype.state_types[state_index]
             val = self.lower.loadvar(name)
-            # IncRef newly stored value
-            if self.context.enable_nrt:
-                self.context.nrt.incref(self.builder, ty, val)
+            # We don't IncRef here because we just copy over the ref we already
+            # have in this function. This prevents the need for an additional
+            # DecRef on resume.
 
             self.context.pack_value(self.builder, ty, val, state_slot)
         # Save resume index
@@ -349,7 +349,8 @@ class LowerYield(object):
             ty = self.gentype.state_types[state_index]
             val = self.context.unpack_value(self.builder, ty, state_slot)
             self.lower.storevar(val, name)
-            # Previous storevar is making an extra incref
-            if self.context.enable_nrt:
-                self.context.nrt.decref(self.builder, ty, val)
+            # We store Null here in the state to prevent NRT_DecRef from making
+            # erroneous deallocs
+            null = Constant.null(self.context.get_data_type(ty))
+            self.builder.store(null, state_slot)
         self.lower.debug_print("# generator resume end")
