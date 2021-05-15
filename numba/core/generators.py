@@ -62,7 +62,7 @@ class BaseGeneratorLower(object):
             lower.func_ir, self.fndesc, self.gentype, self.context.mangler)
         # Helps packing non-omitted arguments into a structure
         self.arg_packer = self.context.get_data_packer(self.fndesc.argtypes)
-        self.state_packer = self.context.get_data_packer(self.fndesc.restype.state_types)
+        self.state_packer = self.context.get_data_packer(self.gentype.state_types)
 
         self.resume_blocks = {}
 
@@ -327,9 +327,9 @@ class LowerYield(object):
                                               0, state_index)
             ty = self.gentype.state_types[state_index]
             val = self.lower.loadvar(name)
-            # IncRef newly stored value
-            if self.context.enable_nrt:
-                self.context.nrt.incref(self.builder, ty, val)
+            # We don't IncRef here because we just copy over the ref we already
+            # have in this function. This prevents the need for an additional
+            # DecRef on resume.
 
             self.context.pack_value(self.builder, ty, val, state_slot)
         # Save resume index
@@ -349,7 +349,11 @@ class LowerYield(object):
             ty = self.gentype.state_types[state_index]
             val = self.context.unpack_value(self.builder, ty, state_slot)
             self.lower.storevar(val, name)
-            # Previous storevar is making an extra incref
+            # We store Null here in the state to prevent NRT_DecRef from making
+            # erroneous deallocs
             if self.context.enable_nrt:
-                self.context.nrt.decref(self.builder, ty, val)
+                manager = self.context.data_model_manager[ty]
+                if manager.has_nrt_meminfo():
+                    null = Constant.null(manager.get_data_type(ty))
+                    self.builder.store(null, state_slot)
         self.lower.debug_print("# generator resume end")
